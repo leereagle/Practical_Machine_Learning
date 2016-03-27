@@ -1,0 +1,135 @@
+---
+output: html_document
+---
+#Assignment: Practical Machine Learning
+
+*Li Xin*
+*25/Mar/2016*
+
+```{r}
+knitr::opts_chunk$set(echo=TRUE)
+```
+
+##Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+##Summary
+In this project you creare a predictor to predict like how they did in the exercise; this is the "classe" variable in the training set.
+
+The Random Forest algorithm perform well in this case and we can generate a model with more than 99% accuracy.
+
+20 different test cases are provided for a final check in the model realized.
+
+##Import and Process Data
+Import the necessary libraries and set the working directory and the seed for reproducibility.
+```{r}
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(randomForest)
+library(corrplot)
+setwd("~/Practical_Machine_Learning")
+set.seed(135246)
+```
+
+Both training and testing datasets are downloaded in the directory.
+
+```{r}
+training <- read.csv(file="pml-training.csv",header=TRUE)
+dim(training)
+testing <- read.csv(file="pml-testing.csv",header=TRUE)
+dim(testing)
+```
+
+Training dataset contains 19622 observations and 160 variables; Testing dataset contains 20 observations and 160 variables. variable "classe" in the training set is the outcome to predict.
+
+Remove columns full of missing values and columns which are not in numeric (but we will save class that is not numeric).
+
+```{r}
+training <- training[, colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0]
+classe <- training$classe
+training <- training[, sapply(training, is.numeric)]
+training$classe <- classe
+testing <- testing[, sapply(testing, is.numeric)]
+```
+
+Remove variables - row counter, timestamps and windows.
+
+```{r}
+filter <- grepl("^X|timestamp|window", names(training))
+training <- training[, !filter]
+filter <- grepl("^X|timestamp|window", names(testing))
+testing <- testing[, !filter]
+testing <- testing[, sapply(testing, is.numeric)]
+```
+
+The result of training dataset contains 19622 observations and 53 variables and the testing data set contains 20 observations and 53 variables.
+
+Plot the correlation between variables ("classe" is a factor and should be removed from the set.)
+
+```{r}
+corrplot(cor(training[, -length(names(training))]))
+```
+
+The partitioning of data can be fitted in an easy model based on "classe" and the tree is printed as below.
+
+```{r}
+prp(rpart(classe ~ ., data=training, method="class"))
+```
+
+##Training dataset partitioning
+Partition the training dataset to use 60% data for the training and remaining 40% for model testing.
+
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+splitTraining <- training[inTrain, ]
+splitTesting <- training[-inTrain, ]
+```
+
+##Random Forest
+Following the machine learning steps, Random Forest algorithm is choosen to build the predictive model because it robust to outliers/correlated covariates and able to choose the best set of variables. Cross-validation is also applied using 5 folds.
+
+```{r}
+model <- train(classe ~ ., data=splitTraining, method="rf", trControl=trainControl(method="cv", 5), ntree=250)
+model
+```
+
+Then we can use the model on the test dataset (variable splitTesting) and compare the prediction with real results in a confusionMatrix.
+
+```{r}
+predictions <- predict(model, splitTesting)
+confusionMatrix(splitTesting$classe, predictions)
+```
+
+The result look good and accuracy of 99,17%
+
+##Prediction on test dataset
+The final predict results on the testing dataset removing last column (problem_id).
+
+```{r}
+result <- predict(model, testing[, -length(names(testing))])
+result
+```
+
+##Write prediction results
+The predictions files are saved as requested by project with the following code.
+
+```{r}
+writeresults = function(x){
+        n = length(x)
+        for(i in 1:n)
+                write.table(x[i],file=paste0("problem_id_",i,".txt"),quote=FALSE,row.names=FALSE,col.names=FALSE)
+}
+writeresults(result)
+```
